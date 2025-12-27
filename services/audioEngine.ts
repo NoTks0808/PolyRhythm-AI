@@ -1,16 +1,19 @@
 import { DrumInstrument, DrumKit, GeneratedPattern } from '../types';
 
-// === 本地采样配置 ===
-// 对应你刚刚重命名并放入 public/samples/ 的文件
+// === 核心修复：动态路径解析 ===
+// 使用 import.meta.env.BASE_URL 自动适配本地和 GitHub Pages 路径
+// 防止出现 "/samples/kick.wav" 404 的问题
+const BASE = import.meta.env.BASE_URL || '/';
+
 const LOCAL_SAMPLE_MAP: Record<DrumInstrument, string> = {
-  [DrumInstrument.KICK]: '/samples/kick.wav',
-  [DrumInstrument.SNARE]: '/samples/snare.wav',
-  [DrumInstrument.HIHAT_CLOSED]: '/samples/hatClosed.wav',
-  [DrumInstrument.HIHAT_OPEN]: '/samples/hatOpen.wav',
-  [DrumInstrument.TOM_LOW]: '/samples/tomLow.wav',
-  [DrumInstrument.TOM_HIGH]: '/samples/tomHigh.wav',
-  [DrumInstrument.CRASH]: '/samples/crash.wav',
-  [DrumInstrument.RIDE]: '/samples/ride.wav',
+  [DrumInstrument.KICK]: `${BASE}samples/kick.wav`,
+  [DrumInstrument.SNARE]: `${BASE}samples/snare.wav`,
+  [DrumInstrument.HIHAT_CLOSED]: `${BASE}samples/hatClosed.wav`,
+  [DrumInstrument.HIHAT_OPEN]: `${BASE}samples/hatOpen.wav`,
+  [DrumInstrument.TOM_LOW]: `${BASE}samples/tomLow.wav`,
+  [DrumInstrument.TOM_HIGH]: `${BASE}samples/tomHigh.wav`,
+  [DrumInstrument.CRASH]: `${BASE}samples/crash.wav`,
+  [DrumInstrument.RIDE]: `${BASE}samples/ride.wav`,
 };
 
 class AudioEngine {
@@ -52,18 +55,15 @@ class AudioEngine {
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       
       // --- 总线链 (Master Bus) ---
-      // 1. 高通滤波：去除录音样本中可能的超低频噪音 (DC Offset)
       const safetyFilter = this.ctx.createBiquadFilter();
       safetyFilter.type = 'highpass';
       safetyFilter.frequency.value = 30;
 
-      // 2. 软剪切 (Soft Clipper)：防止多轨叠加时爆音
       this.createSoftClipCurve();
       const softClipper = this.ctx.createWaveShaper();
       if (this.softClipCurve) softClipper.curve = this.softClipCurve as any;
       softClipper.oversample = '4x';
 
-      // 3. 总音量
       const masterGain = this.ctx.createGain();
       masterGain.gain.value = 0.8; 
 
@@ -73,7 +73,6 @@ class AudioEngine {
       
       this.masterChain = safetyFilter;
 
-      // 初始化合成器资源
       this.createNoiseBuffer();
       this.createDistortionCurve(400); 
     }
@@ -127,6 +126,7 @@ class AudioEngine {
     this.loadPromise = (async () => {
         const promises = Object.entries(LOCAL_SAMPLE_MAP).map(async ([inst, path]) => {
             try {
+                // 这里的 path 现在包含了正确的 BASE_URL
                 const response = await fetch(path);
                 if (!response.ok) throw new Error(`HTTP ${response.status}: ${path}`);
                 const arrayBuffer = await response.arrayBuffer();
@@ -136,7 +136,6 @@ class AudioEngine {
                 }
             } catch (e) {
                 console.error(`无法加载本地文件: ${path}`, e);
-                console.warn("请检查 public/samples/ 下的文件名是否与代码一致！");
             }
         });
         await Promise.all(promises);
@@ -157,7 +156,7 @@ class AudioEngine {
   ) {
     const safeTime = Math.max(ctx.currentTime, time);
 
-    // === 分支 1: 电子/工业 (使用代码合成，保证风格差异) ===
+    // === 分支 1: 电子/工业 (使用代码合成) ===
     if (kit === DrumKit.ELECTRONIC || kit === DrumKit.INDUSTRIAL) {
         this.synthesizeDrum(ctx, destination, instrument, safeTime, velocity, kit);
         return;
@@ -166,24 +165,22 @@ class AudioEngine {
     // === 分支 2: 原声 (使用本地采样) ===
     const buffer = this.buffers.get(instrument);
     
-    // 如果本地文件还没加载好，或者加载失败，暂时不发声，避免报错
+    // 如果还没加载完，直接静音，不要报错
     if (!buffer) return;
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     
-    // 原声鼓微调：给人一种真实的演奏感（微小的音高随机性）
+    // 原声鼓微调
     if (instrument !== DrumInstrument.KICK && instrument !== DrumInstrument.SNARE) {
         source.detune.value = (Math.random() * 20) - 10;
     }
 
     const envGain = ctx.createGain();
-    // 使用 Velocity 平方让动态更自然 (轻打更轻)
     const targetGain = velocity * velocity; 
     
     envGain.gain.setValueAtTime(0, safeTime);
     envGain.gain.linearRampToValueAtTime(targetGain, safeTime + 0.002);
-    // 自然衰减，但保留采样原本的尾音
     envGain.gain.exponentialRampToValueAtTime(0.001, safeTime + 3.0); 
 
     source.connect(envGain);
@@ -191,7 +188,7 @@ class AudioEngine {
     source.start(safeTime);
   }
 
-  // --- 合成引擎 (备份方案 & 电子风) ---
+  // --- 合成引擎 (保持不变，用于电子/工业) ---
   private synthesizeDrum(
     ctx: BaseAudioContext, 
     destination: AudioNode, 
@@ -201,25 +198,20 @@ class AudioEngine {
     kit: DrumKit
   ) {
     const isIndustrial = kit === DrumKit.INDUSTRIAL;
-    
     const osc = ctx.createOscillator();
     const noise = ctx.createBufferSource();
     if (this.noiseBuffer) noise.buffer = this.noiseBuffer;
-    
     const masterGain = ctx.createGain();
     
     let chainOut: AudioNode = masterGain;
 
-    // 工业风特效链
     if (isIndustrial) {
         const dist = ctx.createWaveShaper();
         if (this.distortionCurve) dist.curve = this.distortionCurve as any;
         dist.oversample = '4x';
-        
         const filter = ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.value = 3000 + (vel * 2000);
-
         const comp = ctx.createDynamicsCompressor();
         comp.threshold.value = -30;
         comp.ratio.value = 12;
@@ -230,7 +222,6 @@ class AudioEngine {
         filter.connect(comp);
         chainOut = comp;
     } else {
-        // 电子风：压缩
         const comp = ctx.createDynamicsCompressor();
         comp.threshold.value = -20;
         comp.ratio.value = 4;
@@ -243,7 +234,6 @@ class AudioEngine {
     chainOut.connect(destination);
     const baseVol = vel;
 
-    // 基础 808 风格合成逻辑 (仅用于 Electronic/Industrial)
     switch (inst) {
         case DrumInstrument.KICK:
             osc.frequency.setValueAtTime(isIndustrial ? 120 : 150, time);
@@ -253,7 +243,6 @@ class AudioEngine {
             osc.connect(masterGain);
             osc.start(time); osc.stop(time + 0.5);
             break;
-
         case DrumInstrument.SNARE:
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(200, time);
@@ -261,7 +250,6 @@ class AudioEngine {
             toneGain.gain.setValueAtTime(baseVol * 0.5, time);
             toneGain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
             osc.connect(toneGain); toneGain.connect(masterGain);
-            
             const noiseFilter = ctx.createBiquadFilter();
             noiseFilter.type = 'highpass';
             noiseFilter.frequency.value = 1000;
@@ -269,11 +257,9 @@ class AudioEngine {
             noiseGain.gain.setValueAtTime(baseVol * (isIndustrial ? 1.5 : 0.8), time);
             noiseGain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
             noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(masterGain);
-            
             osc.start(time); osc.stop(time + 0.2);
             noise.start(time); noise.stop(time + 0.3);
             break;
-
         case DrumInstrument.HIHAT_CLOSED:
         case DrumInstrument.HIHAT_OPEN:
             const hp = ctx.createBiquadFilter();
@@ -285,29 +271,26 @@ class AudioEngine {
             noise.connect(hp); hp.connect(masterGain);
             noise.start(time); noise.stop(time + dur);
             break;
-
-        default: // Toms
-             osc.type = 'sine';
-             const freq = inst === DrumInstrument.TOM_LOW ? 80 : 200;
-             osc.frequency.setValueAtTime(freq, time);
-             osc.frequency.exponentialRampToValueAtTime(freq * 0.5, time + 0.3);
-             masterGain.gain.setValueAtTime(baseVol, time);
-             masterGain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
-             osc.connect(masterGain);
-             osc.start(time); osc.stop(time + 0.3);
-             break;
+        default: 
+            osc.type = 'sine';
+            const freq = inst === DrumInstrument.TOM_LOW ? 80 : 200;
+            osc.frequency.setValueAtTime(freq, time);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.5, time + 0.3);
+            masterGain.gain.setValueAtTime(baseVol, time);
+            masterGain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+            osc.connect(masterGain);
+            osc.start(time); osc.stop(time + 0.3);
+            break;
     }
   }
 
   // --- 公共 API ---
-
   public trigger(instrument: DrumInstrument, time: number, velocity: number) {
     if (!this.ctx || !this.masterChain) return;
     this.scheduleNoteGraph(this.ctx, this.masterChain, instrument, time, velocity, this.currentKit);
   }
 
   public async exportWav(pattern: GeneratedPattern): Promise<Blob> {
-      // 导出前确保本地文件加载完毕
       if (!this.isLoaded) await this.loadLocalSamples();
       
       const secondsPerBeat = 60.0 / pattern.bpm;
