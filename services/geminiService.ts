@@ -80,7 +80,7 @@ export const generateDrumPattern = async (params: GenerationParams): Promise<Gen
 
   try {
     const response = await ai.models.generateContent({
-      model: model, 
+      model: model,
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] }
       ],
@@ -91,7 +91,7 @@ export const generateDrumPattern = async (params: GenerationParams): Promise<Gen
       }
     });
 
-    const responseText = response.text();
+    const responseText = response.text;
     
     if (responseText) {
       const data = JSON.parse(responseText) as GeneratedPattern;
