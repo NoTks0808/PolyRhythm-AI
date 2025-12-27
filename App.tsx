@@ -6,7 +6,7 @@ import { audioEngine } from './services/audioEngine';
 import { generateMidiBlob } from './services/midiService';
 import Visualizer from './components/Visualizer';
 
-// --- Icons ---
+// Icons
 const PlayIcon = () => <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>;
 const StopIcon = () => <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>;
 const SparklesIcon = () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 3Z"/></svg>;
@@ -14,11 +14,9 @@ const DownloadIcon = () => <svg width="16" height="16" fill="none" stroke="curre
 const GlobeIcon = () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
 
 function App() {
-  // --- Global State ---
   const [lang, setLang] = useState<Language>('zh');
   const t = TRANSLATIONS[lang];
 
-  // --- Rhythm & Audio State ---
   const [prompt, setPrompt] = useState('');
   const [timeSignature, setTimeSignature] = useState('11/8');
   const [isCustomTime, setIsCustomTime] = useState(false);
@@ -28,8 +26,6 @@ function App() {
   const [bpm, setBpm] = useState(130);
   const [bars, setBars] = useState(2); 
   const [selectedKit, setSelectedKit] = useState<DrumKit>(DrumKit.ACOUSTIC);
-  
-  // ✨ 默认选中第一个模型 (Gemini 3 Pro)
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value); 
   
   const [isGenerating, setIsGenerating] = useState(false);
@@ -38,18 +34,39 @@ function App() {
   const [currentStep, setCurrentStep] = useState(-1);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Refs ---
   const nextNoteTimeRef = useRef(0);
   const currentStepRef = useRef(0);
   const timerIDRef = useRef<number | null>(null);
   const isPlayingRef = useRef(false);
   const patternRef = useRef<GeneratedPattern | null>(null);
 
-  // --- Effects ---
   useEffect(() => { patternRef.current = pattern; }, [pattern]);
   useEffect(() => { audioEngine.setKit(selectedKit); }, [selectedKit]);
 
-  // --- Audio Scheduler ---
+  // 🔥【关键新增】全局静默解锁：监听第一次点击，立刻唤醒音频引擎
+  useEffect(() => {
+    const unlockAudio = () => {
+        audioEngine.init().then(() => {
+            // console.log("🔊 Audio Engine Unlocked by User Interaction");
+        });
+        // 只需要执行一次，解锁后移除监听器
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+    };
+
+    // 监听所有可能的交互事件
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('keydown', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+
+    return () => {
+         document.removeEventListener('click', unlockAudio);
+         document.removeEventListener('keydown', unlockAudio);
+         document.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
+
   const scheduleNote = (stepNumber: number, time: number, currentPattern: GeneratedPattern) => {
     currentPattern.notes.forEach(note => {
       if (note.step === stepNumber) {
@@ -78,7 +95,6 @@ function App() {
     timerIDRef.current = window.setTimeout(scheduler, lookahead);
   };
 
-  // --- Visualizer Loop ---
   useEffect(() => {
     let animationFrameId: number;
     const renderLoop = () => {
@@ -93,7 +109,6 @@ function App() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying]);
 
-  // --- Handlers ---
   const handlePlay = async () => {
     if (!pattern) return;
     if (isPlaying) {
@@ -103,7 +118,9 @@ function App() {
       return;
     }
     try {
+        // 🔥 这里不再会因为网络卡顿而卡死，因为 init 里的加载不阻塞了
         await audioEngine.init();
+        
         setIsPlaying(true);
         isPlayingRef.current = true;
         currentStepRef.current = 0;
@@ -114,7 +131,7 @@ function App() {
         setError(`Audio Error: ${e.message || 'Unknown'}`);
     }
   };
-
+  
   const handleGenerate = async () => {
     if (!prompt.trim()) { setError(t.errPrompt); return; }
     setIsGenerating(true);
@@ -126,21 +143,21 @@ function App() {
     let finalSig = isCustomTime ? `${customNum}/${customDen}` : timeSignature;
 
     try {
-      try { await audioEngine.init(); } catch (e) { console.warn(e); }
+      // 可以在生成时也尝试静默 init，为了下载 WAV 做准备
+      try { audioEngine.init(); } catch (e) { console.warn(e); }
 
       const data = await generateDrumPattern({ 
           prompt, 
           timeSignature: finalSig, 
           bpm, 
           bars,
-          model: selectedModel // ✨ 传入选择的模型
+          model: selectedModel 
       });
       setPattern(data);
     } catch (err: any) {
       console.error("Generation Error:", err);
-      // 优化错误提示：提示用户切换模型
-      if (err.message && err.message.includes('Rate Limit')) {
-         setError("当前模型额度已满，请在上方下拉菜单切换其他模型重试！");
+      if (err.message && err.message.includes('429')) {
+         setError(`❌ 429 限流：当前模型额度已满，请在上方切换其他模型（如 ${MODEL_OPTIONS[2].label}）重试！`);
       } else {
          setError(err.message || t.errLoad); 
       }
@@ -149,6 +166,7 @@ function App() {
     }
   };
 
+  // ... (下载和BPM函数保持不变) ...
   const handleDownload = async (type: 'midi' | 'wav') => {
       if (!pattern) return;
       if (type === 'midi') {
@@ -170,7 +188,6 @@ function App() {
       }
   };
 
-  // --- Input Helpers ---
   const handleBpmInput = (val: string) => {
       let v = parseInt(val);
       if (isNaN(v)) return;
@@ -303,7 +320,7 @@ function App() {
                 </h2>
 
                 <div className="space-y-5 flex-1">
-                    {/* ✨ Model Selector (New) */}
+                    {/* Model Selector */}
                     <div>
                         <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">{t.modelLabel}</label>
                         <select 

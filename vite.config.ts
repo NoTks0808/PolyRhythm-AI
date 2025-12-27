@@ -3,14 +3,13 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-    // 加载环境变量
     const env = loadEnv(mode, '.', '');
 
     return {
-      // 🟢 关键：如果你要部署到 GitHub Pages，必须加上这一行！
-      // 把 'PolyRhythm-AI' 换成你的仓库名。
-      // 如果你是本地运行，这行也不会有负面影响。
-      base: '/PolyRhythm-AI/', 
+      // ✅ 智能路径配置：
+      // 如果是生产环境构建 (npm run build)，则使用 '/polyrhythm-ai/'
+      // 如果是本地开发 (npm run dev)，则使用 '/'
+      base: mode === 'production' ? '/polyrhythm-ai/' : '/',
 
       server: {
         port: 3000,
@@ -22,7 +21,5 @@ export default defineConfig(({ mode }) => {
           '@': path.resolve(__dirname, '.'),
         }
       },
-      // 🟢 清理：移除了 define 中旧的 process.env 配置
-      // 因为你现在已经在代码里用 import.meta.env.VITE_... 了，不需要这里 polyfill
     };
 });
