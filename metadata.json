@@ -1,0 +1,5 @@
+{
+  "name": "PolyRhythm AI",
+  "description": "A generative drum sequencer for Math Rock and complex time signatures. Generate, preview, and export MIDI stems for your DAW.",
+  "requestFramePermissions": []
+}
