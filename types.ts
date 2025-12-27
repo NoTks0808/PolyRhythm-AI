@@ -39,3 +39,14 @@ export interface GenerationParams {
   bars: number;
   model: string; 
 }
+
+// ... 其他保持不变 ...
+
+export interface GenerationParams {
+  prompt: string;
+  timeSignature: string;
+  bpm: number;
+  bars: number;
+  model: string;
+  apiKey?: string; // ✨ 新增：支持传入自定义 Key
+}

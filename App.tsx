@@ -12,6 +12,7 @@ const StopIcon = () => <svg width="24" height="24" fill="currentColor" viewBox="
 const SparklesIcon = () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 3Z"/></svg>;
 const DownloadIcon = () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>;
 const GlobeIcon = () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
+const KeyIcon = () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>;
 
 function App() {
   const [lang, setLang] = useState<Language>('zh');
@@ -28,6 +29,10 @@ function App() {
   const [selectedKit, setSelectedKit] = useState<DrumKit>(DrumKit.ACOUSTIC);
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value); 
   
+  // ✨ 新增：API Key 状态
+  const [userApiKey, setUserApiKey] = useState('');
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  
   const [isGenerating, setIsGenerating] = useState(false);
   const [pattern, setPattern] = useState<GeneratedPattern | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -43,29 +48,38 @@ function App() {
   useEffect(() => { patternRef.current = pattern; }, [pattern]);
   useEffect(() => { audioEngine.setKit(selectedKit); }, [selectedKit]);
 
-  // 🔥【关键新增】全局静默解锁：监听第一次点击，立刻唤醒音频引擎
+  // 全局静默解锁
   useEffect(() => {
     const unlockAudio = () => {
-        audioEngine.init().then(() => {
-            // console.log("🔊 Audio Engine Unlocked by User Interaction");
-        });
-        // 只需要执行一次，解锁后移除监听器
+        audioEngine.init();
         document.removeEventListener('click', unlockAudio);
         document.removeEventListener('keydown', unlockAudio);
         document.removeEventListener('touchstart', unlockAudio);
     };
-
-    // 监听所有可能的交互事件
     document.addEventListener('click', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
     document.addEventListener('touchstart', unlockAudio);
-
     return () => {
          document.removeEventListener('click', unlockAudio);
          document.removeEventListener('keydown', unlockAudio);
          document.removeEventListener('touchstart', unlockAudio);
     };
   }, []);
+
+  // 从 localStorage 读取上次存的 Key (如果有)
+  useEffect(() => {
+    const savedKey = localStorage.getItem('GEMINI_USER_KEY');
+    if (savedKey) {
+        setUserApiKey(savedKey);
+        setShowKeyInput(true); // 如果有 key，默认展开让用户知道
+    }
+  }, []);
+
+  const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setUserApiKey(val);
+      localStorage.setItem('GEMINI_USER_KEY', val); // 自动保存
+  };
 
   const scheduleNote = (stepNumber: number, time: number, currentPattern: GeneratedPattern) => {
     currentPattern.notes.forEach(note => {
@@ -118,9 +132,7 @@ function App() {
       return;
     }
     try {
-        // 🔥 这里不再会因为网络卡顿而卡死，因为 init 里的加载不阻塞了
         await audioEngine.init();
-        
         setIsPlaying(true);
         isPlayingRef.current = true;
         currentStepRef.current = 0;
@@ -131,7 +143,7 @@ function App() {
         setError(`Audio Error: ${e.message || 'Unknown'}`);
     }
   };
-  
+
   const handleGenerate = async () => {
     if (!prompt.trim()) { setError(t.errPrompt); return; }
     setIsGenerating(true);
@@ -143,7 +155,6 @@ function App() {
     let finalSig = isCustomTime ? `${customNum}/${customDen}` : timeSignature;
 
     try {
-      // 可以在生成时也尝试静默 init，为了下载 WAV 做准备
       try { audioEngine.init(); } catch (e) { console.warn(e); }
 
       const data = await generateDrumPattern({ 
@@ -151,22 +162,22 @@ function App() {
           timeSignature: finalSig, 
           bpm, 
           bars,
-          model: selectedModel 
+          model: selectedModel,
+          apiKey: userApiKey // ✨ 传入用户输入的 Key
       });
       setPattern(data);
     } catch (err: any) {
       console.error("Generation Error:", err);
-      if (err.message && err.message.includes('429')) {
-         setError(`❌ 429 限流：当前模型额度已满，请在上方切换其他模型（如 ${MODEL_OPTIONS[2].label}）重试！`);
-      } else {
-         setError(err.message || t.errLoad); 
+      // 如果错误是 429 或 Key 无效，自动展开 Key 输入框引导用户
+      if (err.message && (err.message.includes('429') || err.message.includes('Key'))) {
+         setShowKeyInput(true);
       }
+      setError(err.message || t.errLoad); 
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // ... (下载和BPM函数保持不变) ...
   const handleDownload = async (type: 'midi' | 'wav') => {
       if (!pattern) return;
       if (type === 'midi') {
@@ -320,9 +331,18 @@ function App() {
                 </h2>
 
                 <div className="space-y-5 flex-1">
-                    {/* Model Selector */}
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">{t.modelLabel}</label>
+                    {/* Model Selector & API Key */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase flex justify-between items-center">
+                            {t.modelLabel}
+                            <button 
+                                onClick={() => setShowKeyInput(!showKeyInput)}
+                                className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors"
+                            >
+                                <KeyIcon /> {showKeyInput ? (lang==='zh'?"隐藏 Key":"Hide Key") : (lang==='zh'?"自定义 Key":"Custom Key")}
+                            </button>
+                        </label>
+                        
                         <select 
                             value={selectedModel}
                             onChange={(e) => setSelectedModel(e.target.value)}
@@ -334,6 +354,20 @@ function App() {
                                 </option>
                             ))}
                         </select>
+
+                        {/* ✨ 优雅的 API Key 输入框 (带动画) */}
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${showKeyInput ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'}`}>
+                            <input 
+                                type="password"
+                                placeholder={lang === 'zh' ? "在此输入你的 Gemini API Key (优先使用)" : "Enter your Gemini API Key here (Priority)"}
+                                value={userApiKey}
+                                onChange={handleKeyChange}
+                                className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg p-2 text-xs text-cyan-300 placeholder-slate-600 focus:border-cyan-500 outline-none"
+                            />
+                            <p className="text-[9px] text-slate-500 mt-1 pl-1">
+                                {lang === 'zh' ? "* 你的 Key 仅存储在本地浏览器，不会上传" : "* Your key is stored locally and never uploaded"}
+                            </p>
+                        </div>
                     </div>
 
                     {/* Kit Selector */}
