@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TIME_SIGNATURE_OPTIONS, TRANSLATIONS, STYLE_PRESETS, Language } from './constants';
+import { TIME_SIGNATURE_OPTIONS, TRANSLATIONS, STYLE_PRESETS, MODEL_OPTIONS, Language } from './constants';
 import { GeneratedPattern, DrumInstrument, DrumKit } from './types';
 import { generateDrumPattern } from './services/geminiService';
 import { audioEngine } from './services/audioEngine';
@@ -28,6 +28,9 @@ function App() {
   const [bpm, setBpm] = useState(130);
   const [bars, setBars] = useState(2); 
   const [selectedKit, setSelectedKit] = useState<DrumKit>(DrumKit.ACOUSTIC);
+  
+  // ✨ 默认选中第一个模型 (Gemini 3 Pro)
+  const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value); 
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [pattern, setPattern] = useState<GeneratedPattern | null>(null);
@@ -106,8 +109,9 @@ function App() {
         currentStepRef.current = 0;
         nextNoteTimeRef.current = audioEngine.getCurrentTime() + 0.1;
         scheduler();
-    } catch (e) {
-        setError(t.errLoad);
+    } catch (e: any) {
+        console.error("Audio Init Error:", e);
+        setError(`Audio Error: ${e.message || 'Unknown'}`);
     }
   };
 
@@ -122,11 +126,24 @@ function App() {
     let finalSig = isCustomTime ? `${customNum}/${customDen}` : timeSignature;
 
     try {
-      await audioEngine.init();
-      const data = await generateDrumPattern({ prompt, timeSignature: finalSig, bpm, bars });
+      try { await audioEngine.init(); } catch (e) { console.warn(e); }
+
+      const data = await generateDrumPattern({ 
+          prompt, 
+          timeSignature: finalSig, 
+          bpm, 
+          bars,
+          model: selectedModel // ✨ 传入选择的模型
+      });
       setPattern(data);
     } catch (err: any) {
-      setError(t.errLoad); // Simplified error for UI
+      console.error("Generation Error:", err);
+      // 优化错误提示：提示用户切换模型
+      if (err.message && err.message.includes('Rate Limit')) {
+         setError("当前模型额度已满，请在上方下拉菜单切换其他模型重试！");
+      } else {
+         setError(err.message || t.errLoad); 
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -286,6 +303,22 @@ function App() {
                 </h2>
 
                 <div className="space-y-5 flex-1">
+                    {/* ✨ Model Selector (New) */}
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">{t.modelLabel}</label>
+                        <select 
+                            value={selectedModel}
+                            onChange={(e) => setSelectedModel(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs font-bold text-slate-300 outline-none focus:border-purple-500 transition-all hover:border-purple-500/50 cursor-pointer"
+                        >
+                            {MODEL_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value} className="bg-slate-900">
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* Kit Selector */}
                     <div className="grid grid-cols-3 gap-2">
                         {Object.values(DrumKit).map(kit => (
@@ -346,7 +379,7 @@ function App() {
                             <><SparklesIcon /> {t.generate}</>
                         )}
                     </button>
-                    {error && <p className="text-xs text-red-400 text-center bg-red-900/20 p-2 rounded">{error}</p>}
+                    {error && <p className="text-xs text-red-400 text-center bg-red-900/20 p-2 rounded animate-pulse">{error}</p>}
                 </div>
             </div>
         </aside>
@@ -422,4 +455,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;

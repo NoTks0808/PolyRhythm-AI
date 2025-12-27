@@ -1,39 +1,34 @@
-import OpenAI from 'openai';
+import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { GeneratedPattern, DrumInstrument, GenerationParams, DrumNote } from '../types';
 
 // ============================================================================
-// ⚙️ LLM 核心配置区 (根据你的喜好切换)
+// ⚙️ Google Gemini 动态配置
 // ============================================================================
 
-// 🟢 方案 A: 阿里巴巴 Qwen 2.5-Coder (当前推荐，代码/JSON能力极强)
-// 获取 Key: https://bailian.console.aliyun.com/
-const CONFIG = {
-  provider: 'Alibaba Qwen',
-  baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', 
-  apiKey: import.meta.env.VITE_DASHSCOPE_API_KEY || '', // 请在 .env 添加 VITE_DASHSCOPE_API_KEY
-  model: 'qwen-max', // 或者 'qwen-plus', 'qwen-max'
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+// JSON 结构定义
+const responseSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    description: { type: Type.STRING },
+    notes: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          instrument: { type: Type.STRING, enum: Object.values(DrumInstrument) },
+          step: { type: Type.NUMBER },
+          velocity: { type: Type.NUMBER }
+        },
+        required: ["instrument", "step", "velocity"]
+      }
+    }
+  },
+  required: ["description", "notes"]
 };
 
-// 🔵 方案 B: DeepSeek V3 (性价比之王)
-// 获取 Key: https://platform.deepseek.com/
-/*
-const CONFIG = {
-  provider: 'DeepSeek',
-  baseURL: 'https://api.deepseek.com',
-  apiKey: import.meta.env.VITE_DEEPSEEK_API_KEY || '',
-  model: 'deepseek-chat', 
-};
-*/
-
-// ============================================================================
-
-const client = new OpenAI({
-  baseURL: CONFIG.baseURL,
-  apiKey: CONFIG.apiKey,
-  dangerouslyAllowBrowser: true // 允许前端直接调用 (注意安全)
-});
-
-// Math Rock 黄金样本库
 const FEW_SHOT_EXAMPLES = `
 EXAMPLE 1 (7/8 Polyrhythmic Groove):
 {
@@ -51,17 +46,16 @@ EXAMPLE 1 (7/8 Polyrhythmic Groove):
 `;
 
 export const generateDrumPattern = async (params: GenerationParams): Promise<GeneratedPattern> => {
-  const { prompt, timeSignature, bpm, bars } = params;
+  // ✨ 获取前端传来的 model 参数
+  const { prompt, timeSignature, bpm, bars, model } = params;
 
-  // 计算总步数
   const [numerator, denominator] = timeSignature.split('/').map(Number);
-  // 16分音符为基准
   const stepsPerBar = Math.round((numerator / denominator) * 16);
   const grandTotalSteps = stepsPerBar * bars;
   const maxStepIndex = grandTotalSteps - 1;
   
   const systemPrompt = `
-    You are a legendary Math Rock drummer using the '${CONFIG.provider}' engine.
+    You are a virtuoso Math Rock drummer (expert in bands like American Football, TTNG, Chon).
     
     ABSOLUTE RULES:
     1. **Time Unit**: 1 Step = 1 Sixteenth Note (1/16).
@@ -77,60 +71,48 @@ export const generateDrumPattern = async (params: GenerationParams): Promise<Gen
     ${FEW_SHOT_EXAMPLES}
 
     TASK: Interpret "${prompt}" into a complex drum pattern.
-    IMPORTANT: Return ONLY raw JSON. No markdown formatting (no \`\`\`json).
-    
-    JSON Schema:
-    {
-      "description": "string",
-      "notes": [
-        {"instrument": "KICK|SNARE|HIHAT_CLOSED|HIHAT_OPEN|TOM_LOW|TOM_HIGH|CRASH|RIDE", "step": number, "velocity": 0.0-1.0}
-      ]
-    }
+    INPUT CONTEXT: Time Signature: ${timeSignature}, Bars: ${bars}
   `;
 
   try {
-    const completion = await client.chat.completions.create({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Generate pattern: ${prompt}. Sig: ${timeSignature}, Bars: ${bars}` }
+    // 3. 动态调用模型
+    const response = await ai.models.generateContent({
+      model: model, 
+      contents: [
+        { role: 'user', parts: [{ text: systemPrompt }] }
       ],
-      model: CONFIG.model,
-      temperature: 0.7,
-      // 强制 JSON 模式 (大多数新模型都支持)
-      response_format: { type: "json_object" }, 
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: responseSchema,
+        temperature: 0.75,
+      }
     });
 
-    const responseContent = completion.choices[0].message.content;
-    
-    if (responseContent) {
-      const data = JSON.parse(responseContent) as GeneratedPattern;
+    const responseText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (responseText) {
+      const data = JSON.parse(responseText) as GeneratedPattern;
       
-      // --- 数据清洗与去重 (防止 AI 犯错) ---
       const uniqueNotesMap = new Map<string, DrumNote>();
 
       data.notes.forEach(note => {
-        // 1. 越界检查
         if (note.step >= grandTotalSteps) return;
-        
-        // 2. 规范化力度
         const cleanVelocity = Math.max(0.1, Math.min(1.0, note.velocity));
-        const cleanNote = { ...note, velocity: cleanVelocity };
+        const key = `${Math.round(note.step)}-${note.instrument}`;
 
-        // 3. 唯一键生成 (Step + Instrument)
-        const key = `${note.step}-${note.instrument}`;
-
-        // 4. 冲突解决 (保留力度大的)
         if (uniqueNotesMap.has(key)) {
             const existing = uniqueNotesMap.get(key)!;
-            if (cleanNote.velocity > existing.velocity) {
-                uniqueNotesMap.set(key, cleanNote);
+            if (cleanVelocity > existing.velocity) {
+                uniqueNotesMap.set(key, { ...note, velocity: cleanVelocity });
             }
         } else {
-            uniqueNotesMap.set(key, cleanNote);
+            uniqueNotesMap.set(key, { ...note, velocity: cleanVelocity });
         }
       });
 
       const sanitizedNotes = Array.from(uniqueNotesMap.values()).sort((a, b) => a.step - b.step);
+
+      if (sanitizedNotes.length === 0) throw new Error("AI generated an empty pattern.");
 
       return {
         ...data,
@@ -142,16 +124,16 @@ export const generateDrumPattern = async (params: GenerationParams): Promise<Gen
         notes: sanitizedNotes
       };
     } else {
-      throw new Error("Empty response from LLM");
+      throw new Error("Empty response from Gemini.");
     }
   } catch (error: any) {
-    console.error(`LLM Generation Error (${CONFIG.provider}):`, error);
-    // 抛出更友好的错误信息
-    if (error.message?.includes('401')) {
-      throw new Error(`API Key 无效，请检查 .env 文件中的配置`);
+    console.error(`Gemini API Error (${model}):`, error);
+    
+    if (error.message?.includes('404')) {
+        throw new Error(`模型 ${model} 不可用或权限不足 (404)`);
     }
     if (error.message?.includes('429')) {
-      throw new Error(`请求太快了，请稍等一下 (Rate Limit)`);
+        throw new Error("当前模型请求过快 (429)，请在上方切换其他模型重试！");
     }
     throw error;
   }

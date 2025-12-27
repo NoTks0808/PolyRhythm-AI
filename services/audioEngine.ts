@@ -1,8 +1,8 @@
 import { DrumInstrument, DrumKit, GeneratedPattern } from '../types';
 
-// === 核心修复：动态路径解析 ===
-// 使用 import.meta.env.BASE_URL 自动适配本地和 GitHub Pages 路径
-// 防止出现 "/samples/kick.wav" 404 的问题
+// ============================================================================
+// 1. 路径配置
+// ============================================================================
 const BASE = import.meta.env.BASE_URL || '/';
 
 const LOCAL_SAMPLE_MAP: Record<DrumInstrument, string> = {
@@ -20,12 +20,11 @@ class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterChain: AudioNode | null = null;
   
-  // 采样缓存
   private buffers: Map<DrumInstrument, AudioBuffer> = new Map();
   private isLoaded: boolean = false;
   private loadPromise: Promise<void> | null = null;
 
-  // 合成器辅助缓存
+  // 合成器资源 (仅用于 DrumKit.ELECTRONIC / INDUSTRIAL)
   private noiseBuffer: AudioBuffer | null = null;
   private distortionCurve: Float32Array | null = null;
   private softClipCurve: Float32Array | null = null;
@@ -36,7 +35,6 @@ class AudioEngine {
 
   public async setKit(kit: DrumKit) {
     this.currentKit = kit;
-    // 如果是原声鼓，确保本地文件已加载
     if (kit === DrumKit.ACOUSTIC && !this.isLoaded) {
         await this.loadLocalSamples();
     }
@@ -50,11 +48,15 @@ class AudioEngine {
     return this.ctx?.currentTime || 0;
   }
 
+  // ============================================================================
+  // 2. 初始化引擎
+  // ============================================================================
   public async init() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const CtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.ctx = new CtxClass();
       
-      // --- 总线链 (Master Bus) ---
+      // Master Bus
       const safetyFilter = this.ctx.createBiquadFilter();
       safetyFilter.type = 'highpass';
       safetyFilter.frequency.value = 30;
@@ -81,14 +83,12 @@ class AudioEngine {
       await this.ctx.resume();
     }
     
-    // 初始化时尝试加载本地文件
     if (!this.isLoaded) {
         await this.loadLocalSamples();
     }
   }
 
-  // --- 初始化辅助函数 ---
-
+  // ... (辅助函数) ...
   private createSoftClipCurve() {
     const n_samples = 65536;
     const curve = new Float32Array(n_samples);
@@ -119,23 +119,22 @@ class AudioEngine {
     this.distortionCurve = curve;
   }
 
-  // --- 核心：加载本地 WAV ---
+  // --- 加载采样 ---
   private async loadLocalSamples() {
     if (this.loadPromise) return this.loadPromise;
 
     this.loadPromise = (async () => {
         const promises = Object.entries(LOCAL_SAMPLE_MAP).map(async ([inst, path]) => {
             try {
-                // 这里的 path 现在包含了正确的 BASE_URL
+                if (!this.ctx) return; 
                 const response = await fetch(path);
-                if (!response.ok) throw new Error(`HTTP ${response.status}: ${path}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const arrayBuffer = await response.arrayBuffer();
-                if (this.ctx) {
-                    const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
-                    this.buffers.set(inst as DrumInstrument, audioBuffer);
-                }
+                const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+                this.buffers.set(inst as DrumInstrument, audioBuffer);
             } catch (e) {
-                console.error(`无法加载本地文件: ${path}`, e);
+                console.warn(`[AudioEngine] ⚠️ 采样加载失败: ${path}`);
+                // 注意：这里不再回退，加载失败就是失败
             }
         });
         await Promise.all(promises);
@@ -144,8 +143,7 @@ class AudioEngine {
     return this.loadPromise;
   }
 
-  // --- 调度器 ---
-
+  // --- 调度器 (关键修改区域) ---
   private scheduleNoteGraph(
       ctx: BaseAudioContext, 
       destination: AudioNode,
@@ -156,22 +154,30 @@ class AudioEngine {
   ) {
     const safeTime = Math.max(ctx.currentTime, time);
 
-    // === 分支 1: 电子/工业 (使用代码合成) ===
+    // 1. 如果用户选了电子/工业鼓组 -> 依然走合成器
+    // (这是预期的行为，因为这些风格本身就是电子音)
     if (kit === DrumKit.ELECTRONIC || kit === DrumKit.INDUSTRIAL) {
         this.synthesizeDrum(ctx, destination, instrument, safeTime, velocity, kit);
         return;
     }
 
-    // === 分支 2: 原声 (使用本地采样) ===
+    // 2. 如果是原声鼓 (Acoustic) -> 必须走采样
     const buffer = this.buffers.get(instrument);
     
-    // 如果还没加载完，直接静音，不要报错
-    if (!buffer) return;
+    // 🔥【关键修改】🔥
+    // 如果没有找到采样文件，直接返回 (静音)。
+    // 绝对不调用 synthesizeDrum，防止出现“假冒”的电子音。
+    if (!buffer) {
+        // 你可以在控制台看到是哪个乐器没加载出来
+        // console.warn(`Silent drop: Sample not ready for ${instrument}`);
+        return; 
+    }
 
+    // 播放采样
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     
-    // 原声鼓微调
+    // 微调 (Humanize)
     if (instrument !== DrumInstrument.KICK && instrument !== DrumInstrument.SNARE) {
         source.detune.value = (Math.random() * 20) - 10;
     }
@@ -188,7 +194,7 @@ class AudioEngine {
     source.start(safeTime);
   }
 
-  // --- 合成引擎 (保持不变，用于电子/工业) ---
+  // --- 合成引擎 (仅供电子/工业模式使用) ---
   private synthesizeDrum(
     ctx: BaseAudioContext, 
     destination: AudioNode, 
@@ -285,12 +291,14 @@ class AudioEngine {
   }
 
   // --- 公共 API ---
+
   public trigger(instrument: DrumInstrument, time: number, velocity: number) {
     if (!this.ctx || !this.masterChain) return;
     this.scheduleNoteGraph(this.ctx, this.masterChain, instrument, time, velocity, this.currentKit);
   }
 
   public async exportWav(pattern: GeneratedPattern): Promise<Blob> {
+      await this.init(); 
       if (!this.isLoaded) await this.loadLocalSamples();
       
       const secondsPerBeat = 60.0 / pattern.bpm;

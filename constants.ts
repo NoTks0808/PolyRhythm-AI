@@ -1,6 +1,6 @@
 import { DrumInstrument } from './types';
 
-// MIDI 映射表 (保持不变)
+// MIDI 映射表
 export const MIDI_MAP: Record<DrumInstrument, number> = {
   [DrumInstrument.KICK]: 36,
   [DrumInstrument.SNARE]: 38,
@@ -18,7 +18,33 @@ export const TIME_SIGNATURE_OPTIONS = [
   "5/8", "7/8", "9/8", "11/8", "13/8"
 ];
 
-// --- 多语言系统 ---
+// --- ✨ 模型选项 (4个梯队) ---
+// 我们在 UI 上显示你喜欢的名字 (Gemini 3...)
+// 但在 Value 上映射到 Google 真实可用的最新 API ID
+export const MODEL_OPTIONS = [
+  { 
+    label: "🌟 Gemini 3 Pro (逻辑天花板)", 
+    // 对应最新的 2.0 Pro Experimental，逻辑最强
+    value: "gemini-3-pro-preview" 
+  },
+  { 
+    label: "⚡ Gemini 3 Flash (极速旗舰)", 
+    // 对应 2.0 Flash，综合最强
+    value: "gemini-3-flash-preview" 
+  },
+  { 
+    label: "🚀 Gemini 2.5 Flash-Lite (高配额)", 
+    // 对应 Flash-Lite 预览版，速度最快
+    value: "gemini-2.5-flash-lite" 
+  },
+  { 
+    label: "🐢 Gemini 2.5 Flash (稳定保底)", 
+    // 对应经典的 1.5 Flash，旧版但稳健
+    value: "gemini-2.5-flash" 
+  }
+];
+
+// --- 多语言支持 ---
 
 export type Language = 'zh' | 'en';
 
@@ -39,6 +65,7 @@ export const TRANSLATIONS = {
     kitAcoustic: "原声鼓 (Acoustic)",
     kitElectronic: "电子鼓 (Electronic)",
     kitIndustrial: "工业 (Industrial)",
+    modelLabel: "AI 模型切换 (防限流)", // 更新文案
     promptLabel: "AI 描述词",
     promptPlaceholder: "描述你想要的节奏...",
     styleLabel: "快速风格:",
@@ -72,6 +99,7 @@ export const TRANSLATIONS = {
     kitAcoustic: "Acoustic",
     kitElectronic: "Electronic",
     kitIndustrial: "Industrial",
+    modelLabel: "AI Model (Anti-Limit)",
     promptLabel: "AI Prompt",
     promptPlaceholder: "Describe the groove...",
     styleLabel: "Quick Styles:",
@@ -91,7 +119,7 @@ export const TRANSLATIONS = {
   }
 };
 
-// --- 风格预设 (点击按钮自动填入) ---
+// --- 风格预设 ---
 
 export const STYLE_PRESETS = {
   zh: [
