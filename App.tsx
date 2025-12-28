@@ -13,6 +13,7 @@ const SparklesIcon = () => <svg width="20" height="20" fill="none" stroke="curre
 const DownloadIcon = () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>;
 const GlobeIcon = () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
 const KeyIcon = () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>;
+const HelpIcon = () => <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>;
 
 function App() {
   const [lang, setLang] = useState<Language>('zh');
@@ -29,9 +30,10 @@ function App() {
   const [selectedKit, setSelectedKit] = useState<DrumKit>(DrumKit.ACOUSTIC);
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value); 
   
-  // ✨ 新增：API Key 状态
+  // Key 相关状态
   const [userApiKey, setUserApiKey] = useState('');
   const [showKeyInput, setShowKeyInput] = useState(false);
+  const [showGuide, setShowGuide] = useState(false); // ✨ 教程弹窗开关
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [pattern, setPattern] = useState<GeneratedPattern | null>(null);
@@ -66,19 +68,18 @@ function App() {
     };
   }, []);
 
-  // 从 localStorage 读取上次存的 Key (如果有)
   useEffect(() => {
     const savedKey = localStorage.getItem('GEMINI_USER_KEY');
     if (savedKey) {
         setUserApiKey(savedKey);
-        setShowKeyInput(true); // 如果有 key，默认展开让用户知道
+        setShowKeyInput(true);
     }
   }, []);
 
   const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
       setUserApiKey(val);
-      localStorage.setItem('GEMINI_USER_KEY', val); // 自动保存
+      localStorage.setItem('GEMINI_USER_KEY', val);
   };
 
   const scheduleNote = (stepNumber: number, time: number, currentPattern: GeneratedPattern) => {
@@ -163,12 +164,11 @@ function App() {
           bpm, 
           bars,
           model: selectedModel,
-          apiKey: userApiKey // ✨ 传入用户输入的 Key
+          apiKey: userApiKey
       });
       setPattern(data);
     } catch (err: any) {
       console.error("Generation Error:", err);
-      // 如果错误是 429 或 Key 无效，自动展开 Key 输入框引导用户
       if (err.message && (err.message.includes('429') || err.message.includes('Key'))) {
          setShowKeyInput(true);
       }
@@ -181,6 +181,7 @@ function App() {
   const handleDownload = async (type: 'midi' | 'wav') => {
       if (!pattern) return;
       if (type === 'midi') {
+          const generateMidiBlob = (await import('./services/midiService')).generateMidiBlob; // Lazy load
           const blob = generateMidiBlob(pattern);
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -210,6 +211,47 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-cyan-500/30">
       
+      {/* 教程弹窗 (Modal) */}
+      {showGuide && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-6 shadow-2xl relative">
+                  <button 
+                      onClick={() => setShowGuide(false)}
+                      className="absolute top-4 right-4 text-slate-500 hover:text-white"
+                  >
+                      ✕
+                  </button>
+                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                      <KeyIcon /> {t.guideTitle}
+                  </h3>
+                  <div className="space-y-3 mb-6">
+                      {t.guideSteps.map((step, i) => (
+                          <div key={i} className="text-sm text-slate-300 flex gap-3">
+                              <span className="text-xs font-mono text-cyan-500 mt-0.5">{step.split('.')[0]}.</span>
+                              <span>{step.split('.').slice(1).join('.')}</span>
+                          </div>
+                      ))}
+                  </div>
+                  <div className="flex justify-end">
+                      <a 
+                          href="https://aistudio.google.com/app/apikey" 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-bold rounded-lg hover:from-cyan-500 hover:to-blue-500 transition-all mr-3"
+                      >
+                          前往 Google AI Studio 🚀
+                      </a>
+                      <button 
+                          onClick={() => setShowGuide(false)}
+                          className="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg hover:bg-slate-700 transition-all"
+                      >
+                          {t.close}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Navbar */}
       <nav className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-6 sticky top-0 z-50">
         <div className="flex items-center gap-3">
@@ -355,18 +397,27 @@ function App() {
                             ))}
                         </select>
 
-                        {/* ✨ 优雅的 API Key 输入框 (带动画) */}
-                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${showKeyInput ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'}`}>
-                            <input 
-                                type="password"
-                                placeholder={lang === 'zh' ? "在此输入你的 Gemini API Key (优先使用)" : "Enter your Gemini API Key here (Priority)"}
-                                value={userApiKey}
-                                onChange={handleKeyChange}
-                                className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg p-2 text-xs text-cyan-300 placeholder-slate-600 focus:border-cyan-500 outline-none"
-                            />
-                            <p className="text-[9px] text-slate-500 mt-1 pl-1">
-                                {lang === 'zh' ? "* 你的 Key 仅存储在本地浏览器，不会上传" : "* Your key is stored locally and never uploaded"}
-                            </p>
+                        {/* ✨ API Key 输入框 (带动画) */}
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${showKeyInput ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}`}>
+                            <div className="flex flex-col gap-1">
+                                <input 
+                                    type="password"
+                                    placeholder={lang === 'zh' ? "输入你的 Gemini API Key" : "Enter Gemini API Key"}
+                                    value={userApiKey}
+                                    onChange={handleKeyChange}
+                                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-lg p-2 text-xs text-cyan-300 placeholder-slate-600 focus:border-cyan-500 outline-none"
+                                />
+                                {/* ✨✨ 新增：教程按钮 ✨✨ */}
+                                <button 
+                                    onClick={() => setShowGuide(true)}
+                                    className="self-start flex items-center gap-1 text-[9px] text-blue-400 hover:text-blue-300 transition-colors mt-0.5"
+                                >
+                                    <HelpIcon /> {t.howToGetKey}
+                                </button>
+                                <p className="text-[9px] text-slate-500 mt-1 pl-1 border-t border-slate-800/50 pt-1">
+                                    {lang === 'zh' ? "* 你的 Key 仅存储在本地浏览器，不会上传" : "* Your key is stored locally and never uploaded"}
+                                </p>
+                            </div>
                         </div>
                     </div>
 

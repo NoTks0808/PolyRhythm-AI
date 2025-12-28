@@ -1,6 +1,5 @@
 import { DrumInstrument } from './types';
 
-// MIDI 映射表
 export const MIDI_MAP: Record<DrumInstrument, number> = {
   [DrumInstrument.KICK]: 36,
   [DrumInstrument.SNARE]: 38,
@@ -12,39 +11,30 @@ export const MIDI_MAP: Record<DrumInstrument, number> = {
   [DrumInstrument.RIDE]: 51,
 };
 
-// 拍号选项
 export const TIME_SIGNATURE_OPTIONS = [
   "4/4", "3/4", "5/4", "7/4", 
   "5/8", "7/8", "9/8", "11/8", "13/8"
 ];
 
-// --- ✨ 模型选项 (4个梯队) ---
-// 我们在 UI 上显示你喜欢的名字 (Gemini 3...)
-// 但在 Value 上映射到 Google 真实可用的最新 API ID
+// --- ✨ 4个模型选项 (最新真实ID) ---
 export const MODEL_OPTIONS = [
   { 
-    label: "🌟 Gemini 3 Pro (逻辑天花板)", 
-    // 对应最新的 2.0 Pro Experimental，逻辑最强
+    label: "🌟 Gemini 3 Pro (逻辑最强)", 
     value: "gemini-3-pro-preview" 
   },
   { 
     label: "⚡ Gemini 3 Flash (极速旗舰)", 
-    // 对应 2.0 Flash，综合最强
     value: "gemini-3-flash-preview" 
   },
   { 
     label: "🚀 Gemini 2.5 Flash-Lite (高配额)", 
-    // 对应 Flash-Lite 预览版，速度最快
     value: "gemini-2.5-flash-lite" 
   },
   { 
     label: "🐢 Gemini 2.5 Flash (稳定保底)", 
-    // 对应经典的 1.5 Flash，旧版但稳健
     value: "gemini-2.5-flash" 
   }
 ];
-
-// --- 多语言支持 ---
 
 export type Language = 'zh' | 'en';
 
@@ -65,7 +55,7 @@ export const TRANSLATIONS = {
     kitAcoustic: "原声鼓 (Acoustic)",
     kitElectronic: "电子鼓 (Electronic)",
     kitIndustrial: "工业 (Industrial)",
-    modelLabel: "AI 模型切换 (防限流)", // 更新文案
+    modelLabel: "AI 模型 (切换防限流)",
     promptLabel: "AI 描述词",
     promptPlaceholder: "描述你想要的节奏...",
     styleLabel: "快速风格:",
@@ -82,6 +72,16 @@ export const TRANSLATIONS = {
     errLoad: "音频引擎加载失败",
     currentPattern: "当前模式",
     aiAnalysis: "AI 分析",
+    // ✨ 新增文案
+    howToGetKey: "如何获取免费 Key？",
+    guideTitle: "如何申请 Google Gemini API Key",
+    guideSteps: [
+      "1. 访问 Google AI Studio (https://aistudio.google.com/app/apikey)",
+      "2. 点击右上角 '创建API密钥'",
+      "3. 选择一个项目 (或新建项目)，然后复制(“设置结算信息”右边的第一个按键)生成的 Key 字符串",
+      "4. 回到这里粘贴即可。注意：Key 仅存储在您的本地浏览器中，非常安全。"
+    ],
+    close: "关闭"
   },
   en: {
     title: "PolyRhythm AI",
@@ -99,7 +99,7 @@ export const TRANSLATIONS = {
     kitAcoustic: "Acoustic",
     kitElectronic: "Electronic",
     kitIndustrial: "Industrial",
-    modelLabel: "AI Model (Anti-Limit)",
+    modelLabel: "AI Model",
     promptLabel: "AI Prompt",
     promptPlaceholder: "Describe the groove...",
     styleLabel: "Quick Styles:",
@@ -116,10 +116,18 @@ export const TRANSLATIONS = {
     errLoad: "Audio Engine Error",
     currentPattern: "Active Pattern",
     aiAnalysis: "AI Analysis",
+    // ✨ New Text
+    howToGetKey: "How to get a free Key?",
+    guideTitle: "Get Your Gemini API Key",
+    guideSteps: [
+      "1. Go to Google AI Studio (https://aistudio.google.com/app/apikey)",
+      "2. Click 'Create API key' on the top right",
+      "3. Select a project (or create one) and copy (the first button on the right side of the settlement information)the key string",
+      "4. Paste it here. Note: Key is stored locally and never uploaded."
+    ],
+    close: "Close"
   }
 };
-
-// --- 风格预设 ---
 
 export const STYLE_PRESETS = {
   zh: [
