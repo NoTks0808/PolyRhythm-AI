@@ -18,10 +18,7 @@ export const TIME_SIGNATURE_OPTIONS = [
 
 // --- ✨ 4个模型选项 (最新真实ID) ---
 export const MODEL_OPTIONS = [
-  { 
-    label: "🌟 Gemini 3 Pro (逻辑最强)", 
-    value: "gemini-3-pro-preview" 
-  },
+
   { 
     label: "⚡ Gemini 3 Flash (极速旗舰)", 
     value: "gemini-3-flash-preview" 
