@@ -24,10 +24,10 @@ interface MidiEvent {
 
 export const generateMidiBlob = (pattern: GeneratedPattern): Blob => {
   const header = [
-    0x4D, 0x54, 0x68, 0x64, 
-    0x00, 0x00, 0x00, 0x06, 
-    0x00, 0x00,             
-    0x00, 0x01,             
+    0x4D, 0x54, 0x68, 0x64,
+    0x00, 0x00, 0x00, 0x06,
+    0x00, 0x00,
+    0x00, 0x01,
     0x01, 0xE0              // 480 ticks per quarter note
   ];
 
@@ -39,7 +39,7 @@ export const generateMidiBlob = (pattern: GeneratedPattern): Blob => {
   const ticksPerStep = Math.round(ticksPerBeat / subdivisions);
 
   let trackEvents: number[] = [];
-  
+
   // Time Signature
   const [numStr, denStr] = pattern.timeSignature.split('/');
   const numerator = parseInt(numStr, 10);
@@ -50,21 +50,21 @@ export const generateMidiBlob = (pattern: GeneratedPattern): Blob => {
 
   // Tempo
   const microsecondsPerBeat = Math.round(60000000 / pattern.bpm);
-  trackEvents.push(0x00, 0xFF, 0x51, 0x03, 
-      (microsecondsPerBeat >> 16) & 0xFF, 
-      (microsecondsPerBeat >> 8) & 0xFF, 
-      microsecondsPerBeat & 0xFF
+  trackEvents.push(0x00, 0xFF, 0x51, 0x03,
+    (microsecondsPerBeat >> 16) & 0xFF,
+    (microsecondsPerBeat >> 8) & 0xFF,
+    microsecondsPerBeat & 0xFF
   );
 
   const allEvents: MidiEvent[] = [];
-  // Shorten note duration for higher speeds/resolutions to avoid overlap
-  const NOTE_DURATION = subdivisions >= 8 ? 30 : 60; 
 
   pattern.notes.forEach(note => {
     if (note.velocity <= 0) return;
 
     const startTick = Math.round(note.step * ticksPerStep);
-    const endTick = startTick + NOTE_DURATION;
+    // 使用音符的duration计算结束位置（以32分音符为单位）
+    const durationInSteps = note.duration || 2;  // 默认2步（16分音符）
+    const endTick = startTick + Math.round(durationInSteps * ticksPerStep);
     const midiNote = MIDI_MAP[note.instrument] || 38;
     const velocity = Math.floor(note.velocity * 127);
 
@@ -91,7 +91,7 @@ export const generateMidiBlob = (pattern: GeneratedPattern): Blob => {
   trackEvents.push(0x00, 0xFF, 0x2F, 0x00);
 
   const trackHeader = [
-    0x4D, 0x54, 0x72, 0x6B, 
+    0x4D, 0x54, 0x72, 0x6B,
     ...[(trackEvents.length >>> 24) & 0xFF, (trackEvents.length >>> 16) & 0xFF, (trackEvents.length >>> 8) & 0xFF, trackEvents.length & 0xFF]
   ];
 

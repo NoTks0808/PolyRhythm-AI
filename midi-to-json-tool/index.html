@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIDI → JSON 鼓谱转换器</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>🥁 MIDI → JSON 转换器</h1>
+      <p class="subtitle">将 MIDI 鼓轨道转换为 PolyRhythm AI 格式</p>
+    </header>
+
+    <main>
+      <!-- 上传区域 -->
+      <div id="dropzone" class="dropzone">
+        <div class="dropzone-content">
+          <span class="icon">📂</span>
+          <p>拖拽 MIDI 文件到这里</p>
+          <p class="hint">或点击选择文件</p>
+        </div>
+        <input type="file" id="fileInput" accept=".mid,.midi" hidden>
+      </div>
+
+      <!-- 检测结果 -->
+      <div id="result" class="result hidden">
+        <h2>📊 检测结果</h2>
+
+        <div class="info-grid">
+          <div class="info-card">
+            <label>文件名</label>
+            <span id="fileName">-</span>
+          </div>
+          <div class="info-card">
+            <label>BPM</label>
+            <span id="bpm">-</span>
+          </div>
+          <div class="info-card">
+            <label>拍号</label>
+            <span id="timeSignature">-</span>
+          </div>
+          <div class="info-card">
+            <label>鼓轨道</label>
+            <span id="drumTrack">-</span>
+          </div>
+          <div class="info-card">
+            <label>音符数</label>
+            <span id="noteCount">-</span>
+          </div>
+          <div class="info-card">
+            <label>小节数 (自动)</label>
+            <span id="totalSteps">-</span>
+          </div>
+        </div>
+
+        <!-- 参数调整 -->
+        <div class="params">
+          <h3>⚙️ 参数调整</h3>
+          <div class="param-row">
+            <label for="barsInput">小节数:</label>
+            <input type="number" id="barsInput" value="4" min="1" max="32">
+          </div>
+          <div class="param-row">
+            <label for="descInput">描述:</label>
+            <input type="text" id="descInput" placeholder="输入节奏描述...">
+          </div>
+        </div>
+
+        <!-- JSON 输出 -->
+        <div class="output-section">
+          <h3>📄 JSON 输出</h3>
+          <pre id="jsonOutput"></pre>
+          <div class="actions">
+            <button id="copyBtn" class="btn primary">📋 复制 JSON</button>
+            <button id="downloadBtn" class="btn secondary">💾 下载 JSON</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <p>Made for <strong>PolyRhythm AI</strong> | 用于生成 Few-Shot 提示</p>
+    </footer>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+
+</html>

@@ -16,9 +16,11 @@ export enum DrumKit {
 }
 
 export interface DrumNote {
+  id: string;  // 唯一标识符，用于编辑追踪
   instrument: DrumInstrument;
-  step: number;
-  velocity: number;
+  step: number;  // 音符起始位置（以32分音符为单位）
+  velocity: number;  // 力度 (0.0-1.0)
+  duration: number;  // 音符持续时长（以32分音符为单位，默认2=16分音符）
 }
 
 export interface GeneratedPattern {
@@ -37,7 +39,7 @@ export interface GenerationParams {
   timeSignature: string;
   bpm: number;
   bars: number;
-  model: string; 
+  model: string;
 }
 
 // ... 其他保持不变 ...

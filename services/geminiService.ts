@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { GeneratedPattern, DrumInstrument, GenerationParams, DrumNote } from '../types';
+import { formatFewShotExamples } from '../fewShotExamples';
 
 // 默认 Key (从环境变量获取，作为保底)
 const DEFAULT_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
@@ -24,21 +25,7 @@ const responseSchema: Schema = {
   required: ["description", "notes"]
 };
 
-const FEW_SHOT_EXAMPLES = `
-EXAMPLE 1 (7/8 Polyrhythmic Groove):
-{
-  "description": "A tight 7/8 groove with snare displacement.",
-  "timeSignature": "7/8",
-  "bpm": 130,
-  "bars": 1,
-  "notes": [
-    {"instrument": "HIHAT_CLOSED", "step": 0, "velocity": 0.9},
-    {"instrument": "KICK", "step": 0, "velocity": 1.0},
-    {"instrument": "SNARE", "step": 4, "velocity": 1.0}, 
-    {"instrument": "HIHAT_CLOSED", "step": 4, "velocity": 0.9}
-  ]
-}
-`;
+
 
 export const generateDrumPattern = async (params: GenerationParams): Promise<GeneratedPattern> => {
   const { prompt, timeSignature, bpm, bars, model, apiKey } = params;
@@ -47,32 +34,39 @@ export const generateDrumPattern = async (params: GenerationParams): Promise<Gen
   const activeKey = apiKey?.trim() ? apiKey : DEFAULT_API_KEY;
 
   if (!activeKey) {
-      throw new Error("API Key 缺失！请在设置中输入你的 Google Gemini API Key。");
+    throw new Error("API Key 缺失！请在设置中输入你的 Google Gemini API Key。");
   }
 
   // 动态实例化 Client
   const ai = new GoogleGenAI({ apiKey: activeKey });
 
+  // 固定为32分音符为最小单位（每个四分音符 = 8步）
   const [numerator, denominator] = timeSignature.split('/').map(Number);
-  const stepsPerBar = Math.round((numerator / denominator) * 16);
+  const stepsPerBar = Math.round((numerator / denominator) * 32);  // 32分音符
   const grandTotalSteps = stepsPerBar * bars;
   const maxStepIndex = grandTotalSteps - 1;
-  
+
   const systemPrompt = `
-    You are a virtuoso Math Rock drummer (expert in bands like American Football, TTNG, Chon).
+    You are a virtuoso Math Rock drummer (expert in bands like toe, American Football, TTNG, Chon).
     
     ABSOLUTE RULES:
-    1. **Time Unit**: 1 Step = 1 Sixteenth Note (1/16).
+    1. **Time Unit**: 1 Step = 1 Thirty-second Note (1/32).
     2. **Total Length**: Exactly ${grandTotalSteps} steps.
     3. **Range**: Step 0 to ${maxStepIndex}.
+    4. **Velocity**: Use 1.0 for accents, 0.8 for normal hits, 0.5 for ghost notes.
+    5. **Note Duration**: Each note has a 'duration' field (in 32nd note units):
+       - duration=1: Thirty-second note (短促)
+       - duration=2: Sixteenth note (常规)
+       - duration=4: Eighth note (长音)
+       - duration=8: Quarter note (很长)
+       Use varied durations for musical expression. Short notes (1-2) for fast runs, longer (4+) for cymbals.
     
     ⛔️ ANTI-PATTERNS:
     - NO MACHINE GUNS: Vary velocities (humanize).
     - NO WALL OF SOUND: Use silence creatively.
     - **NO DUPLICATES**: Do NOT place the same instrument twice on the same step.
     
-    LEARNING FROM MASTERS:
-    ${FEW_SHOT_EXAMPLES}
+    ${formatFewShotExamples()}
 
     TASK: Interpret "${prompt}" into a complex drum pattern.
     INPUT CONTEXT: Time Signature: ${timeSignature}, Bars: ${bars}
@@ -92,20 +86,24 @@ export const generateDrumPattern = async (params: GenerationParams): Promise<Gen
     });
 
     const responseText = response.text;
-    
+
     if (responseText) {
       const data = JSON.parse(responseText) as GeneratedPattern;
-      
+
       const uniqueNotesMap = new Map<string, DrumNote>();
       data.notes.forEach(note => {
         if (note.step >= grandTotalSteps) return;
         const cleanVelocity = Math.max(0.1, Math.min(1.0, note.velocity));
+        // 使用AI提供的duration，如果没有则默认为2（16分音符）
+        const noteDuration = note.duration || 2;
         const key = `${Math.round(note.step)}-${note.instrument}`;
         if (uniqueNotesMap.has(key)) {
-            const existing = uniqueNotesMap.get(key)!;
-            if (cleanVelocity > existing.velocity) uniqueNotesMap.set(key, { ...note, velocity: cleanVelocity });
+          const existing = uniqueNotesMap.get(key)!;
+          if (cleanVelocity > existing.velocity) {
+            uniqueNotesMap.set(key, { ...note, velocity: cleanVelocity, duration: noteDuration });
+          }
         } else {
-            uniqueNotesMap.set(key, { ...note, velocity: cleanVelocity });
+          uniqueNotesMap.set(key, { ...note, velocity: cleanVelocity, duration: noteDuration });
         }
       });
       const sanitizedNotes = Array.from(uniqueNotesMap.values()).sort((a, b) => a.step - b.step);
@@ -116,7 +114,7 @@ export const generateDrumPattern = async (params: GenerationParams): Promise<Gen
         ...data,
         bpm: bpm,
         timeSignature: timeSignature,
-        subdivisionsPerBeat: 4,
+        subdivisionsPerBeat: 8,  // 固定为8（每拍8个32分音符）
         totalSteps: grandTotalSteps,
         bars: bars,
         notes: sanitizedNotes
